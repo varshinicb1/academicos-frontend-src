@@ -1,0 +1,89 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
+import 'core/di/service_locator.dart';
+import 'core/theme/app_theme.dart';
+import 'core/routing/app_router.dart';
+import 'presentation/blocs/assessment_bloc.dart';
+import 'presentation/blocs/scanner_bloc.dart';
+import 'presentation/blocs/evaluation_bloc.dart';
+import 'presentation/blocs/mastery_bloc.dart';
+import 'presentation/blocs/analytics_bloc.dart';
+import 'presentation/blocs/reports_bloc.dart';
+
+final sl = GetIt.instance;
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Hive
+  await Hive.initFlutter();
+  await Hive.openBox('academicos_cache');
+  
+  // Initialize dependencies
+  await initDependencies();
+  
+  runApp(const ProviderScope(child: AcademicOSApp()));
+}
+
+class AcademicOSApp extends ConsumerWidget {
+  const AcademicOSApp({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final router = ref.watch(appRouterProvider);
+    
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (context) => sl<AssessmentBloc>()),
+        BlocProvider(create: (context) => sl<ScannerBloc>()),
+        BlocProvider(create: (context) => sl<EvaluationBloc>()),
+        BlocProvider(create: (context) => sl<MasteryBloc>()),
+        BlocProvider(create: (context) => sl<AnalyticsBloc>()),
+        BlocProvider(create: (context) => sl<ReportsBloc>()),
+      ],
+      child: MaterialApp.router(
+        title: 'AcademicOS',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        themeMode: ThemeMode.system,
+        routerConfig: router,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('en', ''),
+          Locale('hi', ''),
+          Locale('ta', ''),
+          Locale('te', ''),
+          Locale('bn', ''),
+          Locale('mr', ''),
+          Locale('gu', ''),
+          Locale('kn', ''),
+          Locale('ml', ''),
+          Locale('or', ''),
+          Locale('pa', ''),
+          Locale('as', ''),
+          Locale('ur', ''),
+        ],
+        builder: (context, child) {
+          return MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(
+                MediaQuery.of(context).textScaler.scale(1.0).clamp(0.85, 1.3),
+              ),
+            ),
+            child: child!,
+          );
+        },
+      ),
+    );
+  }
+}

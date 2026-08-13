@@ -1,0 +1,27 @@
+name: Build and deploy web frontend
+on:
+  workflow_dispatch: {}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - run: |
+          flutter build web --release \
+            --base-href=/academicos-frontend/ \
+            --dart-define=ACADEMICOS_API=https://academicos-backend.onrender.com/api/v1
+      - name: Deploy to academicos-frontend (Pages)
+        run: |
+          cd build/web
+          git init -q
+          git config user.email "ci@academicos"
+          git config user.name "AcademicOS CI"
+          git checkout -q -b master
+          git add -A
+          git commit -q -m "Deploy $(date -u +%Y-%m-%dT%H:%M:%SZ) (source ${{ github.sha }})"
+          git remote add origin https://x-access-token:${{ secrets.DEPLOY_PAT }}@github.com/varshinicb1/academicos-frontend.git
+          git push -f origin master
