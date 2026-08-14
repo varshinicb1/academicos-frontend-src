@@ -23,6 +23,16 @@ class _SettingsPageState extends State<SettingsPage> {
   String _selectedLanguage = 'en';
   String _serverUrl = 'http://localhost:8000';
 
+  // 13 options doesn't fit a SegmentedButton on a phone-width screen without
+  // squeezing each code onto two lines ("e" / "n") — a dropdown scales to
+  // any option count and is the conventional pattern for many-option
+  // single-select, unlike the 2-3 option Theme row above it.
+  static const _languageNames = {
+    'en': 'English', 'hi': 'Hindi', 'ta': 'Tamil', 'te': 'Telugu',
+    'bn': 'Bengali', 'mr': 'Marathi', 'gu': 'Gujarati', 'kn': 'Kannada',
+    'ml': 'Malayalam', 'or': 'Odia', 'pa': 'Punjabi', 'as': 'Assamese', 'ur': 'Urdu',
+  };
+
   @override
   void initState() {
     super.initState();
@@ -52,7 +62,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 24),
           _buildSection('App Preferences', [
             _buildSegmentedTile(Icons.palette, 'Theme', _selectedTheme, ['light', 'dark', 'system'], (v) => setState(() => _selectedTheme = v)),
-            _buildSegmentedTile(Icons.language, 'Language', _selectedLanguage, ['en', 'hi', 'ta', 'te', 'bn', 'mr', 'gu', 'kn', 'ml', 'or', 'pa', 'as', 'ur'], (v) => setState(() => _selectedLanguage = v)),
+            _buildDropdownTile(Icons.language, 'Language', _selectedLanguage, _languageNames, (v) => setState(() => _selectedLanguage = v)),
             _buildSwitchTile(Icons.sync, 'Auto Sync', 'Automatically sync data', _autoSync, (v) => setState(() => _autoSync = v)),
             _buildSwitchTile(Icons.offline_bolt, 'Offline Mode', 'Work offline, sync when online', _offlineMode, (v) => setState(() => _offlineMode = v)),
             _buildListTile(Icons.download, 'Download Data', 'Download syllabus, questions for offline use', () {}),
@@ -127,6 +137,24 @@ class _SettingsPageState extends State<SettingsPage> {
         selected: {value},
         onSelectionChanged: (s) => onChanged(s.first),
         showSelectedIcon: false,
+      ),
+      contentPadding: EdgeInsets.zero,
+    );
+  }
+
+  Widget _buildDropdownTile(IconData icon, String title, String value, Map<String, String> options, ValueChanged<String> onChanged) {
+    return ListTile(
+      leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
+      title: Text(title),
+      trailing: DropdownButton<String>(
+        value: value,
+        underline: const SizedBox.shrink(),
+        items: options.entries
+            .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+            .toList(),
+        onChanged: (v) {
+          if (v != null) onChanged(v);
+        },
       ),
       contentPadding: EdgeInsets.zero,
     );
