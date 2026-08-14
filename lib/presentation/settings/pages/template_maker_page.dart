@@ -276,6 +276,11 @@ class _TemplateMakerPageState extends State<TemplateMakerPage> {
   }
 
   Widget _sectionCard(ThemeData theme, int index, _SectionDraft s) {
+    // Section name gets its own full-width row: squeezed between the avatar,
+    // marks chip and delete button (the original single-row layout) it had
+    // under 240px on a phone screen, clipping longer names like "Very Short
+    // Answer" mid-word with no ellipsis. A full card width comfortably fits
+    // every CBSE section name in the default template.
     return AppCard(
       child: Column(
         children: [
@@ -296,26 +301,29 @@ class _TemplateMakerPageState extends State<TemplateMakerPage> {
                   onChanged: (v) => setState(() => s.name = v),
                 ),
               ),
-              const Gap(8),
-              ChipTag(label: '${s.totalMarks}m'),
-              IconButton(
-                tooltip: 'Remove section',
-                icon: const Icon(Icons.delete_outline, size: 20),
-                onPressed: _sections.length > 1
-                    ? () => setState(() => _sections.removeAt(index))
-                    : null,
-              ),
             ],
           ),
+          const Gap(8),
+          Row(children: [
+            ChipTag(label: '${s.totalMarks}m'),
+            const Spacer(),
+            IconButton(
+              tooltip: 'Remove section',
+              icon: const Icon(Icons.delete_outline, size: 20),
+              onPressed: _sections.length > 1
+                  ? () => setState(() => _sections.removeAt(index))
+                  : null,
+            ),
+          ]),
           const Gap(6),
           Row(children: [
             Expanded(
-              child: _stepper(theme, 'Marks each', s.marksPerQuestion, 1, 10,
+              child: _stepper(theme, 'Marks', s.marksPerQuestion, 1, 10,
                   (v) => setState(() => s.marksPerQuestion = v)),
             ),
             const Gap(12),
             Expanded(
-              child: _stepper(theme, 'Questions', s.questionCount, 1, 40,
+              child: _stepper(theme, 'Qs', s.questionCount, 1, 40,
                   (v) => setState(() => s.questionCount = v)),
             ),
           ]),
@@ -328,7 +336,10 @@ class _TemplateMakerPageState extends State<TemplateMakerPage> {
       ValueChanged<int> onChanged) {
     return Row(
       children: [
-        Expanded(child: Text(label, style: theme.textTheme.bodySmall)),
+        Expanded(
+          child: Text(label, style: theme.textTheme.bodySmall,
+              maxLines: 1, overflow: TextOverflow.ellipsis),
+        ),
         IconButton(
           visualDensity: VisualDensity.compact,
           icon: const Icon(Icons.remove_circle_outline, size: 19),
