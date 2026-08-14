@@ -152,6 +152,8 @@ class SchoolTemplate with _$SchoolTemplate {
     required String id,
     required String schoolId,
     required String name,
+    @Default('') String tagline,
+    @Default('#000000') String brandColor,
     required String headerHtml,
     required String footerHtml,
     required String logoUrl,
