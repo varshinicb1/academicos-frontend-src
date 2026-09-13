@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../data/datasources/api/pillar_api.dart';
 import '../../shared/widgets/common_widgets.dart';
 import '../../shared/widgets/shell.dart';
@@ -8,7 +10,7 @@ import '../../shared/widgets/shell.dart';
 /// Pillar 6 — Principal Intelligence: school health, not individual questions.
 class PrincipalPage extends StatefulWidget {
   final String schoolId;
-  const PrincipalPage({super.key, this.schoolId = 'school_1'});
+  const PrincipalPage({super.key, this.schoolId = AppConstants.currentSchoolId});
 
   @override
   State<PrincipalPage> createState() => _PrincipalPageState();
@@ -40,7 +42,17 @@ class _PrincipalPageState extends State<PrincipalPage> {
         // forceShellLeading docstring.
         leading: forceShellLeading(context),
         title: const Text('School Intelligence'),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
+        actions: [
+          // §14/§18's missing piece: real assignment/enrollment, so the
+          // teacher and student schedule screens this session built have
+          // anything real to show for a real school.
+          IconButton(
+            tooltip: 'Assign teachers & students',
+            onPressed: () => context.push('/admin'),
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+          ),
+          IconButton(tooltip: 'Refresh', onPressed: _load, icon: const Icon(Icons.refresh)),
+        ],
       ),
       body: FutureBuilder<SchoolInsights>(
         future: _future,

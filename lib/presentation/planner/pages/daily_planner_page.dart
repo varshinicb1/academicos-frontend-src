@@ -5,6 +5,7 @@ import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 import 'package:table_calendar/table_calendar.dart';
 
+import '../../../core/constants/app_constants.dart';
 import '../../../data/datasources/api/api_client.dart';
 import '../../../data/datasources/api/pillar_api.dart';
 import '../../../domain/entities/entities.dart';
@@ -12,10 +13,11 @@ import '../../blocs/assessment_bloc.dart';
 import '../../shared/widgets/common_widgets.dart';
 import '../../shared/widgets/shell.dart';
 
-const _teacherId = 'teacher_1';
 // Only Class X has real official CBSE syllabus data loaded (see
 // cbse_syllabus.py) -- these are the 4 subjects it covers.
 const _timetableSubjects = ['Mathematics', 'Science', 'Social Science', 'English'];
+
+const _offlineBuild = bool.fromEnvironment('ACADEMICOS_OFFLINE', defaultValue: false);
 
 /// Assessment schedule — the real exam calendar, built from the assessments
 /// this teacher has created rather than an invented study plan.
@@ -33,7 +35,7 @@ class _PlannerPageState extends State<PlannerPage> {
   @override
   void initState() {
     super.initState();
-    context.read<AssessmentBloc>().add(const AssessmentEvent.loadAssessments(_teacherId));
+    context.read<AssessmentBloc>().add(const AssessmentEvent.loadAssessmentsBySchool(AppConstants.currentSchoolId));
   }
 
   DateTime _dayOf(Assessment a) => a.scheduledAt ?? a.createdAt;
@@ -57,7 +59,7 @@ class _PlannerPageState extends State<PlannerPage> {
             icon: const Icon(Icons.refresh),
             onPressed: () => context
                 .read<AssessmentBloc>()
-                .add(const AssessmentEvent.loadAssessments(_teacherId)),
+                .add(const AssessmentEvent.loadAssessmentsBySchool(AppConstants.currentSchoolId)),
           ),
         ],
       ),
@@ -214,7 +216,7 @@ class _PlannerPageState extends State<PlannerPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Scheduled — syncing to Google Calendar')),
       );
-      context.read<AssessmentBloc>().add(const AssessmentEvent.loadAssessments(_teacherId));
+      context.read<AssessmentBloc>().add(const AssessmentEvent.loadAssessmentsBySchool(AppConstants.currentSchoolId));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -341,6 +343,21 @@ class _TimetableSheetState extends State<_TimetableSheet> {
           if (_result != null) ...[
             const Gap(20),
             Text('Unit allocation', style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            // Real, honest labeling: the offline build's real corpus doesn't
+            // carry official CBSE unit marks-weightage (that data lives only
+            // in the server's cbse_syllabus.py, never bundled offline), so
+            // this build weights periods by real question-bank coverage per
+            // chapter instead -- a genuinely different, real signal, not the
+            // official one, and a teacher should know that before pacing a
+            // real term around it.
+            if (_offlineBuild) ...[
+              const Gap(2),
+              Text(
+                'Based on real on-device question-bank coverage per chapter, '
+                'not official CBSE unit weightage (not bundled in this offline build).',
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ),
+            ],
             const Gap(8),
             for (final a in _result!.allocations)
               Padding(

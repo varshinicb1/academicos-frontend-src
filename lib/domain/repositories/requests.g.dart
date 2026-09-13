@@ -270,6 +270,7 @@ _$GeneratedQuestionImpl _$$GeneratedQuestionImplFromJson(
       marks: (json['marks'] as num).toInt(),
       bloomLevel: json['bloomLevel'] as String,
       difficulty: json['difficulty'] as String,
+      type: json['type'] as String,
       internalChoiceText: json['internalChoiceText'] as String?,
     );
 
@@ -284,12 +285,14 @@ Map<String, dynamic> _$$GeneratedQuestionImplToJson(
       'marks': instance.marks,
       'bloomLevel': instance.bloomLevel,
       'difficulty': instance.difficulty,
+      'type': instance.type,
       'internalChoiceText': instance.internalChoiceText,
     };
 
 _$PaperMetadataImpl _$$PaperMetadataImplFromJson(Map<String, dynamic> json) =>
     _$PaperMetadataImpl(
       assessmentTitle: json['assessmentTitle'] as String,
+      schoolName: json['schoolName'] as String,
       subject: json['subject'] as String,
       grade: (json['grade'] as num).toInt(),
       totalMarks: (json['totalMarks'] as num).toInt(),
@@ -302,6 +305,7 @@ _$PaperMetadataImpl _$$PaperMetadataImplFromJson(Map<String, dynamic> json) =>
 Map<String, dynamic> _$$PaperMetadataImplToJson(_$PaperMetadataImpl instance) =>
     <String, dynamic>{
       'assessmentTitle': instance.assessmentTitle,
+      'schoolName': instance.schoolName,
       'subject': instance.subject,
       'grade': instance.grade,
       'totalMarks': instance.totalMarks,
@@ -316,6 +320,8 @@ _$SchoolTemplateImpl _$$SchoolTemplateImplFromJson(Map<String, dynamic> json) =>
       id: json['id'] as String,
       schoolId: json['schoolId'] as String,
       name: json['name'] as String,
+      tagline: json['tagline'] as String? ?? '',
+      brandColor: json['brandColor'] as String? ?? '#000000',
       headerHtml: json['headerHtml'] as String,
       footerHtml: json['footerHtml'] as String,
       logoUrl: json['logoUrl'] as String,
@@ -336,6 +342,8 @@ Map<String, dynamic> _$$SchoolTemplateImplToJson(
       'id': instance.id,
       'schoolId': instance.schoolId,
       'name': instance.name,
+      'tagline': instance.tagline,
+      'brandColor': instance.brandColor,
       'headerHtml': instance.headerHtml,
       'footerHtml': instance.footerHtml,
       'logoUrl': instance.logoUrl,

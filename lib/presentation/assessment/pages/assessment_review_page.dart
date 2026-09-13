@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:get_it/get_it.dart';
+import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/local_engine/local_api_client.dart'
+    show AssessmentLockedException, editableAssessmentStatuses;
 import '../../../data/datasources/api/api_client.dart';
 import '../../../data/datasources/api/pillar_api.dart';
 import '../../../domain/entities/entities.dart';
@@ -41,6 +46,9 @@ class _AssessmentReviewPageState extends State<AssessmentReviewPage> {
   GeneratedPaper? _fetchedPaper;
   bool _reopening = false;
   String? _reopenError;
+
+  bool _approving = false;
+  String? _approveError;
 
   @override
   void initState() {
@@ -119,7 +127,7 @@ class _AssessmentReviewPageState extends State<AssessmentReviewPage> {
                     const SizedBox(height: 8),
                     for (final section in paper.sections) _buildSectionCard(context, section),
                     const SizedBox(height: 16),
-                    _buildExportCard(context),
+                    _buildExportCard(context, assessment),
                   ],
                 ),
     );
@@ -201,7 +209,8 @@ class _AssessmentReviewPageState extends State<AssessmentReviewPage> {
     );
   }
 
-  Widget _buildExportCard(BuildContext context) {
+  Widget _buildExportCard(BuildContext context, Assessment assessment) {
+    final editable = editableAssessmentStatuses.contains(assessment.status);
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -227,30 +236,121 @@ class _AssessmentReviewPageState extends State<AssessmentReviewPage> {
                   label: const Text('Preview, print or email'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => launchUrl(Uri.parse(_exportedUrl!),
-                      mode: LaunchMode.externalApplication),
+                  onPressed: () => _openExported(_exportedUrl!),
                   icon: const Icon(Icons.open_in_new),
                   label: const Text('Open in browser'),
                 ),
               ],
             ],
           ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: () => context.read<AssessmentBloc>().add(AssessmentEvent.updateStatus(
-              assessmentId: widget.assessmentId,
-              status: AssessmentStatus.underReview,
-            )),
-            icon: const Icon(Icons.rate_review),
-            label: const Text('Mark as Under Teacher Review'),
-          ),
+          if (editable) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => context.read<AssessmentBloc>().add(AssessmentEvent.updateStatus(
+                assessmentId: widget.assessmentId,
+                status: AssessmentStatus.underReview,
+              )),
+              icon: const Icon(Icons.rate_review),
+              label: const Text('Mark as Under Teacher Review'),
+            ),
+          ],
+          if (assessment.status == AssessmentStatus.underReview) ...[
+            const Divider(height: 28),
+            Text('Principal approval', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            const Text(
+              'Approving locks the question selection and paper content — nothing can quietly '
+              'change after this without a new, explicitly logged correction. Requires the '
+              'Principal role, set in Settings > Profile.',
+              style: TextStyle(fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            if (_approveError != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(_approveError!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ),
+            FilledButton.icon(
+              onPressed: _approving ? null : () => _approvePaper(assessment),
+              icon: _approving
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.verified),
+              label: Text(_approving ? 'Approving…' : 'Approve & lock paper'),
+            ),
+          ] else if (!editable) ...[
+            const Divider(height: 28),
+            Row(children: [
+              const Icon(Icons.lock, size: 16, color: Colors.green),
+              const SizedBox(width: 8),
+              Expanded(child: Text('Approved — paper is locked (${assessment.status.name}).',
+                  style: const TextStyle(fontWeight: FontWeight.w600))),
+            ]),
+          ],
         ],
       ),
     );
   }
 
+  Future<void> _approvePaper(Assessment assessment) async {
+    setState(() {
+      _approving = true;
+      _approveError = null;
+    });
+    try {
+      final api = GetIt.I<ApiClient>();
+      // Real gap closed: this used to accept any free-text "principal name"
+      // typed into a text field and approve unconditionally -- anyone could
+      // type any name. approveAssessment() is gated on a real role (the
+      // device's Settings > Profile role offline, a real authenticated
+      // principal login online) instead.
+      final updated = await api.approveAssessment(assessment.id);
+      if (!mounted) return;
+      setState(() {
+        _fetchedAssessment = updated;
+        _approving = false;
+      });
+      context.read<AssessmentBloc>().add(AssessmentEvent.updateStatus(
+            assessmentId: assessment.id,
+            status: AssessmentStatus.principalApproved,
+          ));
+    } on AssessmentLockedException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _approving = false;
+        _approveError = '$e';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _approving = false;
+        _approveError = 'Could not approve: $e';
+      });
+    }
+  }
+
+  /// Local (offline-build) exports return an absolute file path, not a URL
+  /// -- launchUrl on a raw file:// path throws FileUriExposedException on
+  /// Android 7+, so those go through `printing`'s native share/view sheet
+  /// instead, which handles the content:// URI dance correctly. Hosted
+  /// deployments (http paths) keep using launchUrl exactly as before.
+  Future<void> _openExported(String pathOrUrl) async {
+    if (pathOrUrl.startsWith('http')) {
+      await launchUrl(Uri.parse(pathOrUrl), mode: LaunchMode.externalApplication);
+      return;
+    }
+    final bytes = await File(pathOrUrl).readAsBytes();
+    await Printing.sharePdf(bytes: bytes, filename: pathOrUrl.split(RegExp(r'[\\/]')).last);
+  }
+
+  // Real dead end found by audit: these used to read widget.paper/
+  // widget.assessment directly. Every navigation path except the
+  // just-generated flow (assessment_create_page.dart) arrives with those
+  // null and relies on _reopen() populating _fetchedAssessment/_fetchedPaper
+  // instead -- build() already resolves via `?? _fetched...` (see above),
+  // but these two handlers didn't, so Export/Deliver silently no-op'd on
+  // every reopened assessment even though the screen displayed correctly.
   void _openDelivery() {
-    final paper = widget.paper;
+    final paper = widget.paper ?? _fetchedPaper;
     if (paper == null) return;
     showModalBottomSheet<void>(
       context: context,
@@ -262,13 +362,14 @@ class _AssessmentReviewPageState extends State<AssessmentReviewPage> {
         paperTitle: paper.metadata.assessmentTitle,
         subject: paper.metadata.subject,
         grade: paper.metadata.grade,
-        schoolName: widget.assessment?.schoolId ?? 'AcademicOS School',
+        schoolName: (widget.assessment ?? _fetchedAssessment)?.schoolId ?? 'AcademicOS School',
+        localFilePath: (_exportedUrl != null && !_exportedUrl!.startsWith('http')) ? _exportedUrl : null,
       ),
     );
   }
 
   Future<void> _exportPdf() async {
-    final paper = widget.paper;
+    final paper = widget.paper ?? _fetchedPaper;
     if (paper == null) return;
     setState(() {
       _exporting = true;

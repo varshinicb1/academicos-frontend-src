@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../presentation/home/pages/home_page.dart';
 import '../../presentation/syllabus/pages/syllabus_page.dart';
 import '../../presentation/syllabus/pages/chapter_detail_page.dart';
 import '../../presentation/planner/pages/daily_planner_page.dart';
@@ -16,18 +17,33 @@ import '../../domain/entities/entities.dart';
 import '../../domain/repositories/requests.dart';
 import '../../presentation/evaluation/pages/evaluation_page.dart';
 import '../../presentation/mobile_scan/pages/mobile_scan_page.dart';
+import '../../presentation/mobile_scan/pages/scan_history_page.dart';
 import '../../presentation/practice/pages/practice_session_page.dart';
+import '../../presentation/schedule/pages/my_schedule_page.dart';
+import '../../presentation/student/pages/student_schedule_page.dart';
+import '../../presentation/admin/pages/principal_admin_page.dart';
 import '../../presentation/settings/pages/settings_page.dart';
 import '../../presentation/settings/pages/template_maker_page.dart';
+import '../../presentation/settings/pages/profile_page.dart';
+import '../../presentation/settings/pages/classes_page.dart';
+import '../../presentation/settings/pages/legal_page.dart';
+import '../../presentation/auth/pages/login_page.dart';
 import '../../presentation/shared/widgets/shell.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    initialLocation: '/syllabus',
+    initialLocation: '/home',
     routes: [
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),
         routes: [
+          GoRoute(
+            path: '/home',
+            name: 'home',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: HomePage(),
+            ),
+          ),
           GoRoute(
             path: '/syllabus',
             name: 'syllabus',
@@ -38,9 +54,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'chapter/:chapterId',
                 name: 'chapter-detail',
-                builder: (context, state) => ChapterDetailPage(
-                  chapterId: state.pathParameters['chapterId']!,
-                ),
+                builder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>?;
+                  return ChapterDetailPage(
+                    chapterId: state.pathParameters['chapterId']!,
+                    subject: extra?['subject'] as String? ?? 'Science',
+                    grade: extra?['grade'] as int? ?? 10,
+                    chapterName: extra?['chapterName'] as String? ?? '',
+                  );
+                },
               ),
             ],
           ),
@@ -77,9 +99,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'mastery',
                 name: 'mastery-dashboard',
-                pageBuilder: (context, state) => const NoTransitionPage(
-                  child: MasteryDashboard(),
-                ),
+                pageBuilder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>?;
+                  return NoTransitionPage(
+                    child: MasteryDashboard(studentId: extra?['studentId'] as String?),
+                  );
+                },
               ),
               GoRoute(
                 path: 'gaps',
@@ -142,10 +167,36 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
+            path: '/my-schedule',
+            name: 'my-schedule',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: MySchedulePage(),
+            ),
+          ),
+          GoRoute(
+            path: '/student/schedule',
+            name: 'student-schedule',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: StudentSchedulePage(),
+            ),
+          ),
+          GoRoute(
+            path: '/admin',
+            name: 'principal-admin',
+            builder: (context, state) => const PrincipalAdminPage(),
+          ),
+          GoRoute(
             path: '/scan',
             name: 'mobile-scan',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: MobileScanPage(),
+            ),
+          ),
+          GoRoute(
+            path: '/scan-history',
+            name: 'scan-history',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: ScanHistoryPage(),
             ),
           ),
           GoRoute(
@@ -166,6 +217,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 path: 'template',
                 name: 'template-maker',
                 builder: (context, state) => const TemplateMakerPage(),
+              ),
+              GoRoute(
+                path: 'profile',
+                name: 'profile',
+                builder: (context, state) => const ProfilePage(),
+              ),
+              GoRoute(
+                path: 'classes',
+                name: 'classes',
+                builder: (context, state) => const ClassesPage(),
+              ),
+              GoRoute(
+                path: 'legal/:doc',
+                name: 'legal',
+                builder: (context, state) => LegalPage(doc: state.pathParameters['doc']!),
+              ),
+              GoRoute(
+                path: 'login',
+                name: 'login',
+                builder: (context, state) => const LoginPage(),
               ),
             ],
           ),

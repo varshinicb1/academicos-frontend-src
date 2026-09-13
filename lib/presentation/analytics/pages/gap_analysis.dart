@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 
+import '../../../core/local_engine/local_store.dart';
 import '../../../data/datasources/api/pillar_api.dart';
 import '../../shared/widgets/common_widgets.dart';
 import '../../shared/widgets/shell.dart';
@@ -18,11 +19,41 @@ class _GapAnalysisPageState extends State<GapAnalysisPage> {
   final _controller = TextEditingController();
   Future<ClassInsights>? _future;
 
+  // Real gap found on-device: this required a teacher to know and type a
+  // raw assessment ID (a generated string like 'assess_...') with no way
+  // to see or pick from their real evaluated assessments. Sourcing a real
+  // recent list from LocalStore -- same fix pattern as the Mastery page's
+  // student picker.
+  //
+  // Real bug found and fixed: filtering on status == 'evaluated' alone isn't
+  // proof real per-student evaluation data exists on THIS device. SyncService
+  // only syncs assessment-level metadata (including status) between devices,
+  // never the underlying evaluations/mastery -- so an assessment pulled from
+  // another teacher's device (or after a reinstall) can genuinely carry
+  // status:'evaluated' with zero local evaluations, which used to auto-select
+  // and permanently dead-end on "No evaluated sheets yet for this
+  // assessment." Gating on real local evidence (evaluationsFor is non-empty)
+  // instead means the picker only ever offers assessments this page can
+  // actually show something real for.
+  List<Map<String, dynamic>> get _evaluatedAssessments => LocalStore.instance
+      .allAssessments()
+      .where((a) => a['status'] == 'evaluated')
+      .where((a) => LocalStore.instance.evaluationsFor(a['id'] as String).isNotEmpty)
+      .toList();
+
   @override
   void initState() {
     super.initState();
     _controller.text = widget.assessmentId;
-    if (widget.assessmentId.isNotEmpty) _load();
+    if (widget.assessmentId.isNotEmpty) {
+      _load();
+    } else {
+      final real = _evaluatedAssessments;
+      if (real.isNotEmpty) {
+        _controller.text = real.first['id'] as String;
+        _load();
+      }
+    }
   }
 
   @override
@@ -47,7 +78,7 @@ class _GapAnalysisPageState extends State<GapAnalysisPage> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(
               children: [
                 Expanded(
@@ -66,6 +97,28 @@ class _GapAnalysisPageState extends State<GapAnalysisPage> {
               ],
             ),
           ),
+          if (_evaluatedAssessments.isNotEmpty)
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: [
+                  for (final a in _evaluatedAssessments)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ActionChip(
+                        label: Text(a['title'] as String? ?? a['id'] as String),
+                        onPressed: () {
+                          _controller.text = a['id'] as String;
+                          _load();
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 8),
           Expanded(child: _body()),
         ],
       ),
@@ -167,7 +220,7 @@ class _GapAnalysisPageState extends State<GapAnalysisPage> {
                           if (c.atRiskStudents.isNotEmpty)
                             Expanded(
                               child: Text(
-                                'at risk: ${c.atRiskStudents.join(", ")}',
+                                'at risk: ${c.atRiskStudents.map(LocalStore.instance.studentName).join(", ")}',
                                 style: TextStyle(
                                     fontSize: 12,
                                     color: Theme.of(context).colorScheme.onSurfaceVariant),

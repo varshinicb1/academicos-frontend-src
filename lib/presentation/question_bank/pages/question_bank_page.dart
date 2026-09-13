@@ -210,6 +210,7 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
                 suffixIcon: _search.text.isEmpty
                     ? null
                     : IconButton(
+                        tooltip: 'Clear search',
                         icon: const Icon(Icons.clear, size: 18),
                         onPressed: () {
                           _search.clear();
@@ -221,27 +222,37 @@ class _QuestionBankPageState extends State<QuestionBankPage> {
             ),
           ),
           const Gap(12),
-          Wrap(
-            spacing: 6,
-            children: [
-              ChoiceChip(
-                label: const Text('All'),
-                selected: _marksFilter == null,
-                onSelected: (_) {
-                  setState(() => _marksFilter = null);
-                  _loadQuestions();
-                },
-              ),
-              for (final m in marks)
+          // Real bug found via an on-device integration test: Wrap inside a
+          // Row gets an unbounded main-axis constraint (Row only bounds
+          // Expanded/Flexible children), so it never actually wraps -- it
+          // just lays every chip on one line and overflows once there are
+          // enough marks values. Flexible gives it a real width to wrap
+          // within, so a wide marks list drops onto a second line instead.
+          Flexible(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              alignment: WrapAlignment.end,
+              children: [
                 ChoiceChip(
-                  label: Text('${m}m'),
-                  selected: _marksFilter == m,
+                  label: const Text('All'),
+                  selected: _marksFilter == null,
                   onSelected: (_) {
-                    setState(() => _marksFilter = m);
+                    setState(() => _marksFilter = null);
                     _loadQuestions();
                   },
                 ),
-            ],
+                for (final m in marks)
+                  ChoiceChip(
+                    label: Text('${m}m'),
+                    selected: _marksFilter == m,
+                    onSelected: (_) {
+                      setState(() => _marksFilter = m);
+                      _loadQuestions();
+                    },
+                  ),
+              ],
+            ),
           ),
         ],
       ),

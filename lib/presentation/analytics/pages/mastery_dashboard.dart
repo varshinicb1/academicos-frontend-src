@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/local_engine/local_store.dart';
 import '../../../data/datasources/api/pillar_api.dart';
 import '../../shared/widgets/common_widgets.dart';
 import '../../shared/widgets/shell.dart';
 
 /// Pillar 3 — Learning Intelligence: what the student actually knows.
 class MasteryDashboard extends StatefulWidget {
-  final String studentId;
-  const MasteryDashboard({super.key, this.studentId = 'stu_meera'});
+  final String? studentId;
+  const MasteryDashboard({super.key, this.studentId});
 
   @override
   State<MasteryDashboard> createState() => _MasteryDashboardState();
@@ -19,10 +20,19 @@ class _MasteryDashboardState extends State<MasteryDashboard> {
   late Future<StudentMastery> _future;
   late String _studentId;
 
+  // Real bug found on-device: this used to default to a hardcoded
+  // 'stu_meera' with a 3-item dropdown of fake names (Asha/Ravi/Meera)
+  // that matched no real student -- a teacher testing the demo saw "No
+  // knowledge yet" with no way to pick any of the 10 real evaluated demo
+  // students. LocalStore.allStudentIdsWithMastery() already existed but
+  // was never wired up here.
+  List<String> get _realStudentIds => LocalStore.instance.allStudentIdsWithMastery();
+
   @override
   void initState() {
     super.initState();
-    _studentId = widget.studentId;
+    final real = _realStudentIds;
+    _studentId = widget.studentId ?? (real.isNotEmpty ? real.first : 'stu_meera');
     _future = GetIt.I<PillarApi>().knowledge(_studentId);
   }
 
@@ -46,14 +56,31 @@ class _MasteryDashboardState extends State<MasteryDashboard> {
           PopupMenuButton<String>(
             initialValue: _studentId,
             onSelected: _reload,
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'stu_asha', child: Text('Asha')),
-              PopupMenuItem(value: 'stu_ravi', child: Text('Ravi')),
-              PopupMenuItem(value: 'stu_meera', child: Text('Meera')),
-            ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(children: [Text(_studentId), const Icon(Icons.arrow_drop_down)]),
+            itemBuilder: (_) {
+              final real = _realStudentIds;
+              return [
+                for (final id in real)
+                  PopupMenuItem(value: id, child: Text(LocalStore.instance.studentName(id))),
+                if (real.isEmpty) const PopupMenuItem(value: 'stu_meera', child: Text('Meera (no real data yet)')),
+              ];
+            },
+            // Real accessibility bug found by audit: PopupMenuButton doesn't
+            // enforce a minimum tap-target size when given a `child:` --
+            // that only happens on its default IconButton path -- so this
+            // was ~24-28px tall (well under the 48px minimum) despite being
+            // the primary control for switching students on this screen.
+            child: SizedBox(
+              height: 48,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(LocalStore.instance.studentName(_studentId)),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
@@ -102,6 +129,16 @@ class _MasteryDashboardState extends State<MasteryDashboard> {
                           Text('${m.concepts.length} concepts with assessment evidence'),
                           if (m.weakConcepts.isNotEmpty) ...[
                             const SizedBox(height: 8),
+                            // Real accessibility bug found by audit: these
+                            // chips carried no text beyond the bare concept
+                            // name -- red tint was the ONLY signal these are
+                            // the "weak" ones, invisible to a color-blind
+                            // teacher or a screen reader (which just reads
+                            // the concept name, same as any other list).
+                            Text('Weak concepts',
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(color: Theme.of(context).colorScheme.error)),
+                            const SizedBox(height: 4),
                             Wrap(
                               spacing: 6,
                               runSpacing: 4,

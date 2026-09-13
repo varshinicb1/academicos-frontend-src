@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_constants.dart';
 
@@ -38,7 +37,15 @@ class AppCard extends StatelessWidget {
         ] : null,
         border: Border.all(color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.1)),
       ),
-      child: child,
+      // Real bug found via an on-device integration test: any ListTile (or
+      // other Material-ink widget) placed inside AppCard's child triggers
+      // Flutter's "background color or ink splashes may be invisible"
+      // assertion, because Container/BoxDecoration is not a Material
+      // ancestor -- confirmed on Settings, which nests a ListTile per row
+      // inside AppCard and threw this on every single row. A transparent
+      // Material here gives descendants a real ink surface without
+      // changing AppCard's own decoration/appearance at all.
+      child: Material(type: MaterialType.transparency, child: child),
     );
 
     if (onTap != null) {
@@ -142,7 +149,10 @@ class ChipTag extends StatelessWidget {
     final textColor = color != null ? Colors.white : Theme.of(context).colorScheme.onPrimaryContainer;
 
     return Chip(
-      label: Text(label, style: TextStyle(color: textColor, fontSize: 11, fontWeight: FontWeight.w500)),
+      label: Text(label,
+          softWrap: false,
+          overflow: TextOverflow.visible,
+          style: TextStyle(color: textColor, fontSize: 11, fontWeight: FontWeight.w500)),
       avatar: icon != null ? Icon(icon, size: 14, color: textColor) : null,
       backgroundColor: bgColor,
       side: BorderSide.none,

@@ -1,30 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:get_it/get_it.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/constants/app_constants.dart';
+import '../../../core/local_engine/paper_selection.dart' show sectionsFromCounts;
 import '../../../domain/entities/entities.dart';
 import '../../../domain/repositories/requests.dart';
+import '../../../data/datasources/api/pillar_api.dart';
 import '../../blocs/assessment_bloc.dart';
 import '../../shared/widgets/common_widgets.dart';
 import '../../shared/widgets/shell.dart';
-
-const _scienceChapters = [
-  'Chemical Reactions and Equations',
-  'Acids, Bases and Salts',
-  'Metals and Non-metals',
-  'Carbon and its Compounds',
-  'Life Processes',
-  'Control and Coordination',
-  'How do Organisms Reproduce',
-  'Heredity',
-  'Light – Reflection and Refraction',
-  'The Human Eye and the Colourful World',
-  'Electricity',
-  'Magnetic Effects of Electric Current',
-  'Our Environment',
-];
-
-const _defaultChapters = ['Chapter selection depends on subject — pick Science for the pilot question bank.'];
 
 class AssessmentCreatePage extends StatefulWidget {
   const AssessmentCreatePage({super.key});
@@ -51,6 +37,68 @@ class _AssessmentCreatePageState extends State<AssessmentCreatePage> {
     competencyWeights: CompetencyWeights(weights: {}),
     sections: [],
   );
+
+  // Real school request during the pilot: control exactly how many 1m/2m/
+  // 3m/4m/5m questions appear, not just a total-marks + difficulty slider
+  // that auto-derives a proportional split. Off by default (existing
+  // auto-generated layout, unchanged); switching this on replaces
+  // _blueprint.sections with an explicit count-per-mark-value layout via
+  // sectionsFromCounts, which the same real selection/generation engine
+  // (paper_selection.dart, and its Python mirror) already knows how to
+  // honor -- this is a UI gap, not a missing backend feature.
+  bool _customQuestionMix = false;
+  final Map<int, int> _markCounts = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+
+  int get _customMixTotalMarks => _markCounts.entries.fold(0, (sum, e) => sum + e.key * e.value);
+
+  void _applyCustomMix() {
+    final sections = sectionsFromCounts(_markCounts);
+    setState(() => _blueprint = _blueprint.copyWith(
+          sections: sections,
+          totalMarks: _customMixTotalMarks,
+        ));
+  }
+
+  // Real bug fix: the chapter list used to be a hardcoded, Science-only
+  // list of DISPLAY NAMES ("Chemical Reactions and Equations") passed
+  // straight through as chapterIds -- but the real corpus keys chapters by
+  // slug ("chemical-reactions-equations"), so even selecting a Science
+  // "chapter" matched zero real questions, and every other subject showed
+  // one disabled placeholder checkbox reading "Chapter selection depends on
+  // subject -- pick Science for the pilot question bank." (a real user hit
+  // exactly this: selecting a chapter for a non-Science subject dead-ended).
+  // Chapters are now loaded for real, the same way syllabus_page.dart does,
+  // for every subject the corpus actually has data for.
+  List<ChapterEntry> _chapters = [];
+  bool _chaptersLoading = false;
+  String? _chaptersError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChapters();
+  }
+
+  Future<void> _loadChapters() async {
+    setState(() {
+      _chaptersLoading = true;
+      _chaptersError = null;
+    });
+    try {
+      final chapters = await GetIt.I<PillarApi>().chapters(_selectedSubject, _selectedGrade);
+      if (!mounted) return;
+      setState(() {
+        _chapters = chapters;
+        _chaptersLoading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _chaptersError = '$e';
+        _chaptersLoading = false;
+      });
+    }
+  }
 
   @override
   void dispose() {
@@ -125,30 +173,30 @@ class _AssessmentCreatePageState extends State<AssessmentCreatePage> {
                     initialValue: _selectedGrade,
                     decoration: const InputDecoration(labelText: 'Grade *'),
                     items: List.generate(12, (i) => i + 1).map((g) => DropdownMenuItem(value: g, child: Text('Grade $g'))).toList(),
-                    onChanged: (v) => setState(() => _selectedGrade = v!),
+                    onChanged: (v) => setState(() {
+                      _selectedGrade = v!;
+                      _selectedChapters.clear();
+                      _loadChapters();
+                    }),
                   ),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     initialValue: _selectedSubject,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Subject *'),
                     items: ['Science', 'Mathematics', 'English', 'Hindi', 'Social Science', 'Sanskrit', 'Computer Science']
-                        .map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                        .map((s) => DropdownMenuItem(value: s, child: Text(s, overflow: TextOverflow.ellipsis))).toList(),
                     onChanged: (v) => setState(() {
                       _selectedSubject = v!;
                       _selectedChapters.clear();
+                      _loadChapters();
                     }),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            if (_selectedSubject != 'Science')
-              Text(
-                'Only Class X Science has real questions ingested for this pilot.',
-                style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 12),
-              ),
           ],
         ),
       ),
@@ -167,9 +215,14 @@ class _AssessmentCreatePageState extends State<AssessmentCreatePage> {
             children: [
               Expanded(
                 child: TextFormField(
+                  key: ValueKey('totalMarks-$_customQuestionMix-${_blueprint.totalMarks}'),
                   initialValue: _blueprint.totalMarks.toString(),
+                  enabled: !_customQuestionMix,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Total Marks'),
+                  decoration: InputDecoration(
+                    labelText: 'Total Marks',
+                    helperText: _customQuestionMix ? 'Derived from the question mix below' : null,
+                  ),
                   onChanged: (v) => setState(() => _blueprint = _blueprint.copyWith(totalMarks: int.tryParse(v) ?? 80)),
                 ),
               ),
@@ -184,6 +237,45 @@ class _AssessmentCreatePageState extends State<AssessmentCreatePage> {
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Custom question mix'),
+            subtitle: const Text('Set exact counts of 1/2/3/4/5-mark questions instead of an auto-derived split'),
+            value: _customQuestionMix,
+            onChanged: (v) {
+              setState(() => _customQuestionMix = v);
+              if (v) _applyCustomMix();
+            },
+          ),
+          if (_customQuestionMix) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final marks in const [1, 2, 3, 4, 5])
+                  SizedBox(
+                    width: 110,
+                    child: TextFormField(
+                      initialValue: _markCounts[marks].toString(),
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(labelText: '$marks-mark Qs'),
+                      onChanged: (v) {
+                        _markCounts[marks] = int.tryParse(v) ?? 0;
+                        _applyCustomMix();
+                      },
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '${_blueprint.sections.fold<int>(0, (s, sec) => s + sec.questionCount)} questions · '
+              '$_customMixTotalMarks marks total',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+          ],
           const SizedBox(height: 16),
           Text('Difficulty Distribution', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
           _buildDistributionSliders(
@@ -253,20 +345,59 @@ class _AssessmentCreatePageState extends State<AssessmentCreatePage> {
     );
   }
 
+  /// Shows real chapter names in the review summary rather than the raw
+  /// chapterId slugs stored in _selectedChapters (readable for the teacher
+  /// reviewing before generating; the request itself still sends real ids).
+  String _selectedChapterNames() {
+    final byId = {for (final c in _chapters) c.chapterId: c.chapterName};
+    return _selectedChapters.map((id) => byId[id] ?? id).join(', ');
+  }
+
   Step _buildStep3ChapterSelection() {
-    final chapters = _selectedSubject == 'Science' ? _scienceChapters : _defaultChapters;
     return Step(
       title: const Text('Chapters'),
       subtitle: const Text('Select chapters to include (leave empty to draw from all chapters)'),
-      content: Column(
-        children: chapters.map((c) => CheckboxListTile(
-          title: Text(c),
-          value: _selectedChapters.contains(c),
-          onChanged: _selectedSubject == 'Science'
-              ? (v) => setState(() => v! ? _selectedChapters.add(c) : _selectedChapters.remove(c))
-              : null,
-        )).toList(),
-      ),
+      content: _chaptersLoading
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          : _chaptersError != null
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Could not load chapters: $_chaptersError',
+                          style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                      const SizedBox(height: 8),
+                      OutlinedButton.icon(
+                        onPressed: _loadChapters,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
+                )
+              : _chapters.isEmpty
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Text(
+                        'No chapters found for $_selectedSubject Grade $_selectedGrade in the bundled '
+                        'question bank yet. You can still continue -- leaving chapters empty draws '
+                        'from every question available for this subject and grade.',
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                      ),
+                    )
+                  : Column(
+                      children: _chapters.map((c) => CheckboxListTile(
+                        title: Text(c.chapterName),
+                        subtitle: Text('${c.questionCount} question${c.questionCount == 1 ? '' : 's'} available'),
+                        value: _selectedChapters.contains(c.chapterId),
+                        onChanged: (v) => setState(
+                            () => v! ? _selectedChapters.add(c.chapterId) : _selectedChapters.remove(c.chapterId)),
+                      )).toList(),
+                    ),
     );
   }
 
@@ -311,7 +442,7 @@ class _AssessmentCreatePageState extends State<AssessmentCreatePage> {
                 _buildSummaryRow('Title', _titleController.text),
                 _buildSummaryRow('Grade', 'Grade $_selectedGrade'),
                 _buildSummaryRow('Subject', _selectedSubject),
-                _buildSummaryRow('Chapters', _selectedChapters.isEmpty ? 'All chapters' : _selectedChapters.join(', ')),
+                _buildSummaryRow('Chapters', _selectedChapters.isEmpty ? 'All chapters' : _selectedChapterNames()),
                 _buildSummaryRow('Total Marks', _blueprint.totalMarks.toString()),
                 _buildSummaryRow('Duration', '${_blueprint.durationMinutes} minutes'),
               ],
@@ -370,7 +501,7 @@ class _AssessmentCreatePageState extends State<AssessmentCreatePage> {
     });
     final bloc = context.read<AssessmentBloc>();
     const teacherId = 'teacher_1';
-    const schoolId = 'school_1';
+    const schoolId = AppConstants.currentSchoolId;
 
     try {
       bloc.add(AssessmentEvent.createAssessment(CreateAssessmentRequest(
@@ -401,6 +532,19 @@ class _AssessmentCreatePageState extends State<AssessmentCreatePage> {
       final optResult = optimized.mapOrNull(questionsSelected: (s) => s.result);
       if (optResult == null) {
         throw Exception(optimized.mapOrNull(error: (s) => s.message) ?? 'Failed to select questions');
+      }
+      // Real bug this closes: generating anyway with zero real questions
+      // produced a paper with every section showing "(0 marks)" -- signed
+      // off as a real generated paper with nothing in it. The corpus's
+      // subject coverage is genuinely uneven (heavily Science/Math-weighted),
+      // so a thin subject+grade+chapter combination legitimately returns no
+      // matches -- refuse and say why, don't silently hand back a worthless
+      // paper. Same fix already shipped on the backend for the same bug.
+      if (optResult.selectedQuestions.isEmpty) {
+        throw Exception(
+            'No questions found for $_selectedSubject Grade $_selectedGrade with the selected chapters. '
+            'Try widening the chapter selection or a different subject/grade -- '
+            'this subject may have thin coverage in the bundled corpus.');
       }
 
       bloc.add(AssessmentEvent.generatePaper(
