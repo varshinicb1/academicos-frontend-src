@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:get_it/get_it.dart';
 
 import '../../presentation/home/pages/home_page.dart';
 import '../../presentation/syllabus/pages/syllabus_page.dart';
@@ -21,6 +22,7 @@ import '../../presentation/mobile_scan/pages/scan_history_page.dart';
 import '../../presentation/practice/pages/practice_session_page.dart';
 import '../../presentation/schedule/pages/my_schedule_page.dart';
 import '../../presentation/student/pages/student_schedule_page.dart';
+import '../../presentation/parent/pages/parent_portal_page.dart';
 import '../../presentation/admin/pages/principal_admin_page.dart';
 import '../../presentation/settings/pages/settings_page.dart';
 import '../../presentation/settings/pages/template_maker_page.dart';
@@ -31,7 +33,7 @@ import '../../presentation/auth/pages/login_page.dart';
 import '../../presentation/shared/widgets/shell.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/home',
     routes: [
       ShellRoute(
@@ -181,6 +183,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
+            path: '/parent',
+            name: 'parent-portal',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: ParentPortalPage(),
+            ),
+          ),
+          GoRoute(
             path: '/admin',
             name: 'principal-admin',
             builder: (context, state) => const PrincipalAdminPage(),
@@ -266,4 +275,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       ),
     ),
   );
+  // Service_locator.dart's global session-keeper routes back to /settings/login
+  // on a dead-session 401 via GetIt -- make this router reachable from there.
+  // Guarded: this provider re-runs per ProviderScope (per widget test), and
+  // GetIt is process-global -- re-registering would throw.
+  if (!GetIt.instance.isRegistered<GoRouter>()) {
+    GetIt.instance.registerSingleton<GoRouter>(router);
+  }
+  return router;
 });
